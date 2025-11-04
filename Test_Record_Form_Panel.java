@@ -120,6 +120,10 @@ public class Test_Record_Form_Panel extends JPanel {
         };
         paramTable = new JTable(paramModel);
         add(new JScrollPane(paramTable), BorderLayout.CENTER);
+        
+        if (record.testId > 0) {
+        loadParametersFromDB(record.testId);
+        }
 
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.LEFT));
         JButton btnAddParam = new JButton("Add Parameter");
@@ -138,6 +142,29 @@ public class Test_Record_Form_Panel extends JPanel {
         bottom.add(btnSave);
         add(bottom, BorderLayout.SOUTH);
     }
+    
+    private void loadParametersFromDB(int testId) {
+    if (testId <= 0) return;
+    try (Connection c = DBConnection.getConnection();
+         PreparedStatement ps = c.prepareStatement(
+                 "SELECT parameter_name, result_value, normal_range, units, interpretation FROM parameters WHERE test_id = ?")) {
+        ps.setInt(1, testId);
+        try (ResultSet rs = ps.executeQuery()) {
+            paramModel.setRowCount(0); // clear table first
+            while (rs.next()) {
+                paramModel.addRow(new Object[]{
+                    rs.getString("parameter_name"),
+                    rs.getString("result_value"),
+                    rs.getString("normal_range"),
+                    rs.getString("units"),
+                    rs.getString("interpretation")
+                });
+            }
+        }
+    } catch (Exception ex) {
+        ex.printStackTrace();
+    }
+}
 
     private void save(String technician) {
         record.patientId = (Integer) cmbPatient.getSelectedItem();
@@ -154,7 +181,7 @@ public class Test_Record_Form_Panel extends JPanel {
                     ps.setInt(1, id);
                     ps.executeUpdate();
                 }
-                String ins = "INSERT INTO parameters (test_id, parameter_name, result_value, normal_range, units, interpretation, remarks) VALUES (?,?,?,?,?,?,?)";
+                String ins = "INSERT INTO parameters (test_id, parameter_name, result_value, normal_range, units, interpretation) VALUES (?,?,?,?,?,?)";
                 try (PreparedStatement ps = c.prepareStatement(ins)) {
                     for (int i = 0; i < paramModel.getRowCount(); i++) {
                         ps.setInt(1, id);
@@ -163,7 +190,6 @@ public class Test_Record_Form_Panel extends JPanel {
                         ps.setString(4, String.valueOf(paramModel.getValueAt(i, 2)));
                         ps.setString(5, String.valueOf(paramModel.getValueAt(i, 3)));
                         ps.setString(6, String.valueOf(paramModel.getValueAt(i, 4)));
-                        ps.setString(7, "");
                         ps.addBatch();
                     }
                     ps.executeBatch();
@@ -173,7 +199,7 @@ public class Test_Record_Form_Panel extends JPanel {
             }
             ActivityLogDAO.log(Session.getCurrentUser() != null ? Session.getCurrentUser().username : "system", "Saved", "tests", id, "Test saved with parameters.");
 
-            // new: broadcast an event so dashboards/panels can refresh
+            // new: broadcast an event so dashboards/panels can refresh 
             EventBus.post("test.saved", id);
 
             JOptionPane.showMessageDialog(this, "Saved");
